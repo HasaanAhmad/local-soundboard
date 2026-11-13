@@ -9,19 +9,39 @@ const { Server } = require("socket.io");
 
 const PORT = Number(process.env.PORT) || 3847;
 const IS_PKG = Boolean(process.pkg);
-const BUNDLE_ROOT = __dirname;
-const APP_ROOT = IS_PKG ? path.dirname(process.execPath) : __dirname;
+const BUNDLE_ROOT = process.env.SOUNDBOARD_BUNDLE || __dirname;
+const APP_ROOT =
+  process.env.SOUNDBOARD_APP_ROOT ||
+  (IS_PKG ? path.dirname(process.execPath) : __dirname);
 const SOUNDS_DIR = path.join(APP_ROOT, "sounds");
 const DATA_DIR = path.join(APP_ROOT, "data");
 const MANIFEST_PATH = path.join(DATA_DIR, "sounds.json");
 const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
 const PUBLIC_DIR = path.join(BUNDLE_ROOT, "public");
+const SEED_SOUNDS_DIR = path.join(BUNDLE_ROOT, "sounds");
+const SEED_MANIFEST = path.join(BUNDLE_ROOT, "data", "sounds.json");
 
-fs.mkdirSync(SOUNDS_DIR, { recursive: true });
-fs.mkdirSync(DATA_DIR, { recursive: true });
+function ensureData() {
+  fs.mkdirSync(SOUNDS_DIR, { recursive: true });
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 
-if (!fs.existsSync(MANIFEST_PATH)) {
-  fs.writeFileSync(MANIFEST_PATH, "[]");
+  if (!fs.existsSync(MANIFEST_PATH)) {
+    if (fs.existsSync(SEED_MANIFEST)) {
+      fs.copyFileSync(SEED_MANIFEST, MANIFEST_PATH);
+    } else {
+      fs.writeFileSync(MANIFEST_PATH, "[]");
+    }
+  }
+
+  if (fs.existsSync(SEED_SOUNDS_DIR)) {
+    for (const file of fs.readdirSync(SEED_SOUNDS_DIR)) {
+      if (file.startsWith(".")) continue;
+      const dest = path.join(SOUNDS_DIR, file);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(path.join(SEED_SOUNDS_DIR, file), dest);
+      }
+    }
+  }
 }
 
 function readSettings() {
@@ -40,16 +60,6 @@ function clampVolume(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0.85;
   return Math.min(1, Math.max(0, n));
-}
-
-let masterVolume = clampVolume(readSettings().volume ?? 0.85);
-
-function setMasterVolume(value) {
-  masterVolume = clampVolume(value);
-  const settings = readSettings();
-  settings.volume = masterVolume;
-  writeSettings(settings);
-  return masterVolume;
 }
 
 function readManifest() {
@@ -111,148 +121,7 @@ function openBrowser(url) {
   }
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, SOUNDS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || ".mp3";
-    const base = slugify(path.basename(file.originalname, path.extname(file.originalname))) || "sound";
-    cb(null, `${base}-${Date.now()}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ok =
-      /\.(mp3|wav|ogg|m4a|aac|webm)$/i.test(file.originalname) ||
-      (file.mimetype || "").startsWith("audio/");
-    cb(ok ? null : new Error("Only audio files are allowed"), ok);
-  },
-});
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: true } });
-
-app.use(express.json());
-app.get("/manifest.webmanifest", (_req, res) => {
-  res.type("application/manifest+json");
-  res.sendFile(path.join(PUBLIC_DIR, "manifest.webmanifest"));
-});
-app.get("/sw.js", (_req, res) => {
-  res.set("Cache-Control", "no-cache");
-  res.type("application/javascript");
-  res.sendFile(path.join(PUBLIC_DIR, "sw.js"));
-});
-app.use("/sounds", express.static(SOUNDS_DIR, { maxAge: "1y", immutable: true }));
-app.use(express.static(PUBLIC_DIR));
-
-app.get("/api/info", (_req, res) => {
-  res.json({
-    port: PORT,
-    addresses: localAddresses(),
-    soundCount: readManifest().length,
-    volume: masterVolume,
-  });
-});
-
-app.get("/api/settings", (_req, res) => {
-  res.json({ volume: masterVolume });
-});
-
-app.put("/api/settings", (req, res) => {
-  const volume = setMasterVolume(req.body?.volume);
-  io.emit("volume", { volume });
-  res.json({ volume });
-});
-
-app.get("/api/sounds", (_req, res) => {
-  res.json(readManifest());
-});
-
-app.post("/api/sounds", (req, res) => {
-  upload.single("audio")(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: "Audio file required" });
-
-    const name = (req.body.name || path.basename(req.file.originalname, path.extname(req.file.originalname))).trim();
-    const id = `${slugify(name) || "sound"}-${Date.now()}`;
-    const sound = {
-      id,
-      name: name || "Untitled",
-      color: pickColor(id),
-      file: req.file.filename,
-      createdAt: new Date().toISOString(),
-    };
-
-    const sounds = readManifest();
-    sounds.push(sound);
-    writeManifest(sounds);
-    io.emit("sounds:updated", sounds);
-    res.status(201).json(sound);
-  });
-});
-
-app.delete("/api/sounds/:id", (req, res) => {
-  const sounds = readManifest();
-  const index = sounds.findIndex((s) => s.id === req.params.id);
-  if (index === -1) return res.status(404).json({ error: "Not found" });
-
-  const [removed] = sounds.splice(index, 1);
-  writeManifest(sounds);
-
-  const filePath = path.join(SOUNDS_DIR, removed.file);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-  io.emit("sounds:updated", sounds);
-  res.json({ ok: true });
-});
-
-io.on("connection", (socket) => {
-  socket.emit("sounds:updated", readManifest());
-  socket.emit("volume", { volume: masterVolume });
-
-  socket.on("role", (role) => {
-    socket.data.role = role === "streamer" ? "streamer" : "board";
-    socket.join(socket.data.role);
-    io.emit("presence", presenceSnapshot());
-  });
-
-  socket.on("volume", (payload) => {
-    const volume = setMasterVolume(payload && payload.volume);
-    io.emit("volume", { volume });
-  });
-
-  socket.on("play", (payload) => {
-    const soundId = payload && payload.id;
-    if (!soundId) return;
-    const sound = readManifest().find((s) => s.id === soundId);
-    if (!sound) return;
-
-    io.to("streamer").emit("play", {
-      id: sound.id,
-      name: sound.name,
-      file: sound.file,
-      url: `/sounds/${sound.file}`,
-      at: Date.now(),
-      from: socket.id,
-      volume: masterVolume,
-    });
-
-    io.emit("play:echo", { id: sound.id, name: sound.name, at: Date.now() });
-  });
-
-  socket.on("stop-all", () => {
-    io.to("streamer").emit("stop-all");
-  });
-
-  socket.on("disconnect", () => {
-    io.emit("presence", presenceSnapshot());
-  });
-});
-
-function presenceSnapshot() {
+function presenceSnapshot(io) {
   const sockets = [...io.sockets.sockets.values()];
   return {
     streamers: sockets.filter((s) => s.data.role === "streamer").length,
@@ -260,19 +129,202 @@ function presenceSnapshot() {
   };
 }
 
-server.listen(PORT, "0.0.0.0", () => {
-  const ips = localAddresses();
-  const localUrl = `http://localhost:${PORT}`;
-  console.log("\n  Local Soundboard is live\n");
-  console.log(`  On this PC:     ${localUrl}`);
-  for (const ip of ips) {
-    console.log(`  On your phone:  http://${ip}:${PORT}`);
+function startServer(options = {}) {
+  ensureData();
+
+  let masterVolume = clampVolume(readSettings().volume ?? 0.85);
+
+  function setMasterVolume(value) {
+    masterVolume = clampVolume(value);
+    const settings = readSettings();
+    settings.volume = masterVolume;
+    writeSettings(settings);
+    return masterVolume;
   }
-  console.log("\n  Keep this window open. Open Streaming PC on the laptop, Soundboard on mobile.");
-  if (process.platform === "win32") {
-    console.log("  If phone stays Connecting: allow LocalSoundboard in Windows Firewall (Private networks).\n");
-  } else {
-    console.log("");
-  }
-  openBrowser(localUrl);
-});
+
+  const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, SOUNDS_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || ".mp3";
+      const base =
+        slugify(path.basename(file.originalname, path.extname(file.originalname))) || "sound";
+      cb(null, `${base}-${Date.now()}${ext}`);
+    },
+  });
+
+  const upload = multer({
+    storage,
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ok =
+        /\.(mp3|wav|ogg|m4a|aac|webm)$/i.test(file.originalname) ||
+        (file.mimetype || "").startsWith("audio/");
+      cb(ok ? null : new Error("Only audio files are allowed"), ok);
+    },
+  });
+
+  const app = express();
+  const server = http.createServer(app);
+  const io = new Server(server, { cors: { origin: true } });
+
+  app.use(express.json());
+  app.get("/manifest.webmanifest", (_req, res) => {
+    res.type("application/manifest+json");
+    res.sendFile(path.join(PUBLIC_DIR, "manifest.webmanifest"));
+  });
+  app.get("/sw.js", (_req, res) => {
+    res.set("Cache-Control", "no-cache");
+    res.type("application/javascript");
+    res.sendFile(path.join(PUBLIC_DIR, "sw.js"));
+  });
+  app.use("/sounds", express.static(SOUNDS_DIR, { maxAge: "1y", immutable: true }));
+  app.use(express.static(PUBLIC_DIR));
+
+  app.get("/api/info", (_req, res) => {
+    res.json({
+      port: PORT,
+      addresses: localAddresses(),
+      soundCount: readManifest().length,
+      volume: masterVolume,
+    });
+  });
+
+  app.get("/api/settings", (_req, res) => {
+    res.json({ volume: masterVolume });
+  });
+
+  app.put("/api/settings", (req, res) => {
+    const volume = setMasterVolume(req.body?.volume);
+    io.emit("volume", { volume });
+    res.json({ volume });
+  });
+
+  app.get("/api/sounds", (_req, res) => {
+    res.json(readManifest());
+  });
+
+  app.post("/api/sounds", (req, res) => {
+    upload.single("audio")(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: "Audio file required" });
+
+      const name = (
+        req.body.name || path.basename(req.file.originalname, path.extname(req.file.originalname))
+      ).trim();
+      const id = `${slugify(name) || "sound"}-${Date.now()}`;
+      const sound = {
+        id,
+        name: name || "Untitled",
+        color: pickColor(id),
+        file: req.file.filename,
+        createdAt: new Date().toISOString(),
+      };
+
+      const sounds = readManifest();
+      sounds.push(sound);
+      writeManifest(sounds);
+      io.emit("sounds:updated", sounds);
+      res.status(201).json(sound);
+    });
+  });
+
+  app.delete("/api/sounds/:id", (req, res) => {
+    const sounds = readManifest();
+    const index = sounds.findIndex((s) => s.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Not found" });
+
+    const [removed] = sounds.splice(index, 1);
+    writeManifest(sounds);
+
+    const filePath = path.join(SOUNDS_DIR, removed.file);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    io.emit("sounds:updated", sounds);
+    res.json({ ok: true });
+  });
+
+  io.on("connection", (socket) => {
+    socket.emit("sounds:updated", readManifest());
+    socket.emit("volume", { volume: masterVolume });
+
+    socket.on("role", (role) => {
+      socket.data.role = role === "streamer" ? "streamer" : "board";
+      socket.join(socket.data.role);
+      io.emit("presence", presenceSnapshot(io));
+    });
+
+    socket.on("volume", (payload) => {
+      const volume = setMasterVolume(payload && payload.volume);
+      io.emit("volume", { volume });
+    });
+
+    socket.on("play", (payload) => {
+      const soundId = payload && payload.id;
+      if (!soundId) return;
+      const sound = readManifest().find((s) => s.id === soundId);
+      if (!sound) return;
+
+      io.to("streamer").emit("play", {
+        id: sound.id,
+        name: sound.name,
+        file: sound.file,
+        url: `/sounds/${sound.file}`,
+        at: Date.now(),
+        from: socket.id,
+        volume: masterVolume,
+      });
+
+      io.emit("play:echo", { id: sound.id, name: sound.name, at: Date.now() });
+    });
+
+    socket.on("stop-all", () => {
+      io.to("streamer").emit("stop-all");
+    });
+
+    socket.on("disconnect", () => {
+      io.emit("presence", presenceSnapshot(io));
+    });
+  });
+
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(PORT, "0.0.0.0", () => {
+      const ips = localAddresses();
+      const localUrl = `http://127.0.0.1:${PORT}`;
+      console.log("\n  Local Soundboard is live\n");
+      console.log(`  On this PC:     http://localhost:${PORT}`);
+      for (const ip of ips) {
+        console.log(`  On your phone:  http://${ip}:${PORT}`);
+      }
+      console.log("\n  Keep this app open while streaming.");
+      if (process.platform === "win32") {
+        console.log("  If phone stays Connecting: run Allow-Firewall.bat as Administrator.\n");
+      } else {
+        console.log("");
+      }
+
+      if (options.openBrowser !== false) openBrowser(localUrl);
+
+      resolve({
+        port: PORT,
+        localUrl,
+        phoneUrls: ips.map((ip) => `http://${ip}:${PORT}`),
+        server,
+        io,
+        close: () =>
+          new Promise((res, rej) => {
+            server.close((err) => (err ? rej(err) : res()));
+          }),
+      });
+    });
+  });
+}
+
+module.exports = { startServer, PORT, localAddresses };
+
+if (require.main === module) {
+  startServer().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

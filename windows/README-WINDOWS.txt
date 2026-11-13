@@ -1,32 +1,31 @@
-Local Soundboard — Windows install
-=================================
+Local Soundboard — Windows
+==========================
 
-1. Keep this whole folder together (exe + sounds + data + scripts).
-2. Double-click LocalSoundboard.exe
-3. Browser opens on this PC → choose "Streaming PC"
-4. On your phone (same Wi-Fi), open the URL shown on screen → choose "Soundboard"
-5. Use the volume slider on PC or phone to set output loudness
+NO INSTALL NEEDED. Your PC does not need Node.js.
 
-Phone app (PWA / Home Screen)
------------------------------
-Port is always 3847. Bookmark/install the same URL once.
+1. Unzip this whole folder somewhere permanent
+   Example: C:\Apps\LocalSoundboard
+2. Double-click Start-Soundboard.bat
+3. Keep that window open
+4. Browser opens → choose "Streaming PC"
+5. Phone (same Wi-Fi) → open the URL on screen → choose "Soundboard"
 
-iPhone / iPad (Safari):
-  Open the board → Share → Add to Home Screen
+If phone stays Connecting
+-------------------------
+1. Right-click Allow-Firewall.bat → Run as administrator
+2. Make sure phone and PC are on the same Wi-Fi (not Guest)
+3. On the phone use the IP shown on the PC, not localhost
 
-Android (Chrome):
-  Open the board → menu ⋮ → Install app / Add to Home screen
+Install as phone app
+--------------------
+iPhone: Safari → Share → Add to Home Screen
+Android: Chrome → menu → Install app / Add to Home screen
 
-After that, the home-screen icon opens straight into Soundboard.
-
-Auto-start with Windows
------------------------
-Run Install-Startup.bat once. It adds a Startup shortcut.
+Start with Windows
+------------------
+Run Install-Startup.bat once.
 Run Uninstall-Startup.bat to remove it.
 
-Notes
------
-- Keep the PC awake / not fully sleeping if you want phone triggers anytime.
-- Windows Firewall may ask to allow LocalSoundboard on private networks — Allow.
-- Sounds and volume settings are saved in the data\ folder next to the exe.
-- Tip: reserve your PC's local IP in the router DHCP settings so the phone URL never changes.
+Volume
+------
+Use the volume slider on PC or phone. It controls streamer output loudness.

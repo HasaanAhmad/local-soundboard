@@ -1,6 +1,6 @@
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 dir = fso.GetParentFolderName(WScript.ScriptFullName)
-exe = dir & "\LocalSoundboard.exe"
+bat = dir & "\Start-Soundboard.bat"
 shell.CurrentDirectory = dir
-shell.Run """" & exe & """", 7, False
+shell.Run """" & bat & """", 7, False
