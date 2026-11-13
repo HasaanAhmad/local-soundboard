@@ -495,6 +495,11 @@
     updateInstallCard();
   });
 
+  if (isStandalone) {
+    document.getElementById("switch-role-board")?.setAttribute("hidden", "");
+    document.getElementById("switch-role-streamer")?.setAttribute("hidden", "");
+  }
+
   if (role === "streamer" || role === "board") {
     enterRole(role);
   } else {
