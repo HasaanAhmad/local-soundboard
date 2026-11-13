@@ -268,6 +268,11 @@ server.listen(PORT, "0.0.0.0", () => {
   for (const ip of ips) {
     console.log(`  On your phone:  http://${ip}:${PORT}`);
   }
-  console.log("\n  Keep this window open. Open Streaming PC on the laptop, Soundboard on mobile.\n");
+  console.log("\n  Keep this window open. Open Streaming PC on the laptop, Soundboard on mobile.");
+  if (process.platform === "win32") {
+    console.log("  If phone stays Connecting: allow LocalSoundboard in Windows Firewall (Private networks).\n");
+  } else {
+    console.log("");
+  }
   openBrowser(localUrl);
 });

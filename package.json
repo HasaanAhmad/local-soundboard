@@ -16,7 +16,8 @@
   },
   "pkg": {
     "assets": [
-      "public/**/*"
+      "public/**/*",
+      "node_modules/socket.io/client-dist/**/*"
     ],
     "scripts": [
       "server.js"

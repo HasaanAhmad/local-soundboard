@@ -175,13 +175,29 @@
   }
 
   function connect() {
+    if (typeof io !== "function") {
+      const el = role === "streamer" ? streamerStatus : boardStatus;
+      setStatus(el, "Script failed to load", "warn");
+      return;
+    }
+
     if (socket) socket.disconnect();
-    socket = io({ transports: ["websocket", "polling"] });
+    socket = io({
+      transports: ["polling", "websocket"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      timeout: 8000,
+    });
 
     socket.on("connect", () => {
       socket.emit("role", role);
       const el = role === "streamer" ? streamerStatus : boardStatus;
       setStatus(el, "Connected", "live");
+    });
+
+    socket.on("connect_error", () => {
+      const el = role === "streamer" ? streamerStatus : boardStatus;
+      setStatus(el, "Can't reach PC — check Wi‑Fi/firewall", "warn");
     });
 
     socket.on("disconnect", () => {
