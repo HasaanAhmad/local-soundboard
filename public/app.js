@@ -19,8 +19,20 @@
   const uploadNote = document.getElementById("upload-note");
   const volumeSliders = [...document.querySelectorAll("[data-volume-slider]")];
   const volumeValues = [...document.querySelectorAll("[data-volume-value]")];
+  const installCard = document.getElementById("install-card");
+  const installHint = document.getElementById("install-hint");
+  const installBtn = document.getElementById("install-btn");
 
-  let role = localStorage.getItem(ROLE_KEY);
+  const params = new URLSearchParams(location.search);
+  const queryRole = params.get("role");
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+
+  let role =
+    queryRole === "streamer" || queryRole === "board"
+      ? queryRole
+      : localStorage.getItem(ROLE_KEY) || (isStandalone ? "board" : null);
   let sounds = [];
   let socket = null;
   let audioCtx = null;
@@ -28,9 +40,51 @@
   let masterVolume = 0.85;
   let recentIds = loadRecent();
   let syncingVolumeUi = false;
+  let deferredInstallPrompt = null;
 
   const cache = new Map();
   const playing = new Set();
+
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* insecure LAN origins may block SW; Add to Home Screen still works */
+    });
+  }
+
+  function isIos() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+
+  function isAndroid() {
+    return /android/i.test(navigator.userAgent);
+  }
+
+  function updateInstallCard() {
+    if (!installCard || role !== "board" || isStandalone) {
+      if (installCard) installCard.hidden = true;
+      return;
+    }
+
+    installCard.hidden = false;
+    if (deferredInstallPrompt) {
+      installHint.textContent = "Install to your home screen for one-tap access.";
+      installBtn.hidden = false;
+      return;
+    }
+
+    installBtn.hidden = true;
+    if (isIos()) {
+      installHint.textContent =
+        "Safari → Share → Add to Home Screen. Opens as an app next time.";
+    } else if (isAndroid()) {
+      installHint.textContent =
+        "Chrome → ⋮ menu → Install app / Add to Home screen.";
+    } else {
+      installHint.textContent =
+        "Use your browser’s Install / Add to Home Screen option.";
+    }
+  }
 
   function loadRecent() {
     try {
@@ -324,15 +378,18 @@
     showScreen(role === "streamer" ? "streamer-screen" : "board-screen");
     setStatus(role === "streamer" ? streamerStatus : boardStatus, "Connecting…", "warn");
     if (role === "streamer") fetchInfo();
+    updateInstallCard();
     connect();
     fetchSounds();
   }
 
   function resetRole() {
+    if (isStandalone) return;
     localStorage.removeItem(ROLE_KEY);
     role = null;
     if (socket) socket.disconnect();
     showScreen("role-screen");
+    updateInstallCard();
   }
 
   document.querySelectorAll("[data-role]").forEach((btn) => {
@@ -417,10 +474,31 @@
   });
 
   updateVolumeUi(masterVolume);
+  registerServiceWorker();
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateInstallCard();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    if (installCard) installCard.hidden = true;
+  });
+
+  installBtn?.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => {});
+    deferredInstallPrompt = null;
+    updateInstallCard();
+  });
 
   if (role === "streamer" || role === "board") {
     enterRole(role);
   } else {
     showScreen("role-screen");
+    updateInstallCard();
   }
 })();

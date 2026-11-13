@@ -136,6 +136,15 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true } });
 
 app.use(express.json());
+app.get("/manifest.webmanifest", (_req, res) => {
+  res.type("application/manifest+json");
+  res.sendFile(path.join(PUBLIC_DIR, "manifest.webmanifest"));
+});
+app.get("/sw.js", (_req, res) => {
+  res.set("Cache-Control", "no-cache");
+  res.type("application/javascript");
+  res.sendFile(path.join(PUBLIC_DIR, "sw.js"));
+});
 app.use("/sounds", express.static(SOUNDS_DIR, { maxAge: "1y", immutable: true }));
 app.use(express.static(PUBLIC_DIR));
 
