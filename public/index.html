@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#12100e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Local Soundboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="glow" aria-hidden="true"></div>
+
+    <main id="app">
+      <section id="role-screen" class="screen active">
+        <div class="brand-block">
+          <p class="eyebrow">Same Wi‑Fi · Instant trigger</p>
+          <h1 class="brand">Local<br />Soundboard</h1>
+          <p class="lede">
+            Pick a role. Streamer PC caches every clip. Phone fires them live.
+          </p>
+        </div>
+
+        <div class="role-grid">
+          <button class="role-card role-streamer" type="button" data-role="streamer">
+            <span class="role-kicker">Laptop / OBS machine</span>
+            <span class="role-title">Streaming PC</span>
+            <span class="role-copy">Preloads & plays audio when the board fires.</span>
+          </button>
+          <button class="role-card role-board" type="button" data-role="board">
+            <span class="role-kicker">Phone / tablet</span>
+            <span class="role-title">Soundboard</span>
+            <span class="role-copy">Big buttons. Tap a sound — it hits the stream.</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="streamer-screen" class="screen">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Streaming PC</p>
+            <h2 class="panel-title">Ready to blast</h2>
+          </div>
+          <div class="status-pill" id="streamer-status">Connecting…</div>
+        </header>
+
+        <div class="streamer-layout">
+          <div class="stage">
+            <div class="cache-meter">
+              <div class="cache-label">
+                <span>Sound cache</span>
+                <strong id="cache-text">0 / 0</strong>
+              </div>
+              <div class="cache-track">
+                <div class="cache-fill" id="cache-fill"></div>
+              </div>
+            </div>
+
+            <div class="now-playing" id="now-playing">
+              <span class="np-label">Waiting for a hit…</span>
+              <strong class="np-name" id="np-name">—</strong>
+            </div>
+
+            <div class="volume-control" data-volume-control>
+              <div class="volume-label">
+                <span>Output volume</span>
+                <strong data-volume-value>85%</strong>
+              </div>
+              <input
+                class="volume-slider"
+                data-volume-slider
+                type="range"
+                min="0"
+                max="100"
+                value="85"
+                aria-label="Output volume"
+              />
+            </div>
+
+            <div class="presence" id="streamer-presence">No board connected yet</div>
+
+            <div class="connect-card" id="connect-card">
+              <p class="connect-label">Open on your phone</p>
+              <code id="phone-url">…</code>
+              <p class="connect-hint">Same Wi‑Fi. Choose Soundboard on the phone.</p>
+            </div>
+          </div>
+
+          <aside class="manage">
+            <h3>Add sounds</h3>
+            <form id="upload-form" class="upload-form">
+              <label class="file-drop" for="audio-input">
+                <input id="audio-input" name="audio" type="file" accept="audio/*" required />
+                <span id="file-label">Drop audio or tap to browse</span>
+              </label>
+              <input
+                id="sound-name"
+                name="name"
+                type="text"
+                placeholder="Display name (optional)"
+                maxlength="48"
+              />
+              <button type="submit" class="btn primary">Add to board</button>
+            </form>
+            <p class="form-note" id="upload-note"></p>
+
+            <div class="manage-actions">
+              <button type="button" class="btn ghost" id="stop-all">Stop all</button>
+              <button type="button" class="btn ghost" id="switch-role-streamer">Switch role</button>
+            </div>
+
+            <ul class="sound-list" id="streamer-sound-list"></ul>
+          </aside>
+        </div>
+      </section>
+
+      <section id="board-screen" class="screen">
+        <header class="topbar compact">
+          <div>
+            <p class="eyebrow">Soundboard</p>
+            <h2 class="panel-title">Tap to trigger</h2>
+          </div>
+          <div class="status-pill" id="board-status">Connecting…</div>
+        </header>
+
+        <p class="board-hint" id="board-presence">Looking for Streaming PC…</p>
+
+        <div class="volume-control board-volume" data-volume-control>
+          <div class="volume-label">
+            <span>PC volume</span>
+            <strong data-volume-value>85%</strong>
+          </div>
+          <input
+            class="volume-slider"
+            data-volume-slider
+            type="range"
+            min="0"
+            max="100"
+            value="85"
+            aria-label="PC output volume"
+          />
+        </div>
+
+        <div class="pad-grid" id="pad-grid"></div>
+
+        <div class="board-footer">
+          <button type="button" class="btn ghost" id="board-stop">Stop all</button>
+          <button type="button" class="btn ghost" id="switch-role-board">Switch role</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
